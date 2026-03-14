@@ -74,6 +74,7 @@ const allowedOrigins = [
   "http://www.shoukhinshop.com",
   "https://shoukhinshop.com",
   "https://www.shoukhinshop.com",
+  "shoukhinshop-com-frontend.vercel.app",
 ];
 app.use(
   cors({
