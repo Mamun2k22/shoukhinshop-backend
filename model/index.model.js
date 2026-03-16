@@ -8,7 +8,7 @@ import Color from './color.model.js';
 import Order from './order.model.js';
 import Banner from './banner.model.js';
 import SubCategory from './subCategory.model.js';
-import Brand from './brand.model.js';
+import Brand from './brand.model.js ';
 import SiteSetting from './SiteSetting.model.js'
 import HomeSectionSetting  from './HomeSectionSetting.js'
 import SiteTicker from './siteTicker.model.js'

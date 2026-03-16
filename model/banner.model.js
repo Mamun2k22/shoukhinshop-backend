@@ -14,6 +14,9 @@ const bannerSchema = new mongoose.Schema({
     type: Date,
     default: Date.now, // Automatically records when banner was uploaded
   },
+  imgbbDeleteUrl: { type: String, default: "" },
+imgbbId: { type: String, default: "" },
+
 }, 
 { collection: 'banners' }); // Explicit collection name
 
