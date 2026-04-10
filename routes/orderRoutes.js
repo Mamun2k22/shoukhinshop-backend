@@ -3,7 +3,8 @@ import { protect } from '../middleware/protect.js';
 import { isAdmin } from '../middleware/isAdmin.js';
 import {
   placeOrder,
-  getUserOrders,
+  getOrdersByCustomer,
+  // getUserOrders,
   getOrderById,
   updateOrderStatus,
   cancelOrder,
@@ -19,7 +20,8 @@ import {
 
 const router = express.Router();
 router.post("/order", placeOrder);
-router.get("/orders/:userId", getUserOrders);
+// router.get("/orders/:userId", getUserOrders);
+router.get("/orders/:userId", getOrdersByCustomer);
 router.get("/order/:orderId", getOrderById);
 // Admin-only routes
 router.get("/orders", protect, isAdmin, getAllOrders);

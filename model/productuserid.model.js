@@ -1,16 +1,68 @@
 import mongoose from "mongoose";
 
-// Define user schema
-const productUserIdSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // reference to user collection
-  productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' }, // Add productId to reference Product schema
-  quantity: { type: Number, default: 1 },
-  itemPrice: { type: Number, default: 1 },
-  selectedSize: { type: String }, // Add size for the selected product
-  selectedWeight: { type: String }, // Add weight for the selected product
-  selectedColor: { type: String }, // Add color for the selected product
-}, { collection: 'carts' }); 
+const productUserIdSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+      default: null,
+    },
 
-// Export the user model
+    guestId: {
+      type: String,
+      required: false,
+      default: null,
+      index: true,
+    },
+
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
+
+    quantity: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+
+    itemPrice: {
+      type: Number,
+      default: 1,
+    },
+
+    selectedSize: {
+      type: String,
+      default: null,
+    },
+
+    selectedWeight: {
+      type: String,
+      default: null,
+    },
+
+    selectedColor: {
+      type: String,
+      default: null,
+    },
+
+    selectedChest: {
+      type: String,
+      default: null,
+    },
+
+    selectedWaist: {
+      type: String,
+      default: null,
+    },
+  },
+  {
+    collection: "carts",
+    timestamps: true,
+  }
+);
+
 const AddToCart = mongoose.model("AddToCart", productUserIdSchema);
 export default AddToCart;

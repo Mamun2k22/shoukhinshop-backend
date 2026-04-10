@@ -7,34 +7,58 @@ import banggoClient from "../services/banggoClient.js";
 export const placeOrder = async (req, res) => {
   try {
     const {
-      cartItems, // [{ productId, quantity, selectedSize, selectedColor, ... }]
-      shippingOption, // "inside" | "outside"
+      cartItems,
+      shippingOption,
       paymentMethod,
       customer,
       userId,
+      guestId,
       address,
       district,
     } = req.body;
 
-    // ✅ Guards
     if (!Array.isArray(cartItems) || cartItems.length === 0) {
       return res.status(400).json({ message: "Cart is empty" });
     }
-    if (!userId) return res.status(400).json({ message: "UserId required" });
-    if (!address) return res.status(400).json({ message: "Address required" });
-    if (!shippingOption) return res.status(400).json({ message: "Shipping option required" });
 
-    const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!userId && !guestId) {
+      return res.status(400).json({ message: "UserId or GuestId required" });
+    }
 
-    // ✅ Fetch products from DB (server authority)
+    if (!address) {
+      return res.status(400).json({ message: "Address required" });
+    }
+
+    if (!shippingOption) {
+      return res.status(400).json({ message: "Shipping option required" });
+    }
+
+    if (!paymentMethod) {
+      return res.status(400).json({ message: "Payment method required" });
+    }
+
+    if (!customer?.mobile) {
+      return res.status(400).json({ message: "Customer mobile required" });
+    }
+
+    let user = null;
+
+    if (userId) {
+      user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+    }
+
     const ids = cartItems.map((x) => x.productId);
     const products = await Product.find({ _id: { $in: ids } }).lean();
-    if (!products.length) return res.status(404).json({ message: "Products not found" });
+
+    if (!products.length) {
+      return res.status(404).json({ message: "Products not found" });
+    }
 
     const map = buildProductsMap(products);
 
-    // ✅ priceCart (only product total)
     const priced = priceCart({
       items: cartItems.map((x) => ({
         productId: x.productId,
@@ -43,7 +67,6 @@ export const placeOrder = async (req, res) => {
       productsById: map,
     });
 
-    // ✅ compute shipping (server authority)
     const settings = (await ShippingSettings.findOne().lean()) || {};
     const ship = computeShipping({
       subtotal: priced.total,
@@ -55,12 +78,19 @@ export const placeOrder = async (req, res) => {
     const shippingCost = ship.shippingFinal;
     const totalCost = priced.total + shippingCost;
 
-    // ✅ Build Order.products
     const productsPayload = cartItems.map((item) => {
-      const p = products.find((pp) => String(pp._id) === String(item.productId));
-      if (!p) throw new Error(`Product ${item.productId} not found`);
+      const p = products.find(
+        (pp) => String(pp._id) === String(item.productId)
+      );
 
-      const line = priced.lines.find((l) => String(l.productId) === String(item.productId));
+      if (!p) {
+        throw new Error(`Product ${item.productId} not found`);
+      }
+
+      const line = priced.lines.find(
+        (l) => String(l.productId) === String(item.productId)
+      );
+
       const unit = line ? Math.round(line.unit) : Number(p.price || 0);
 
       return {
@@ -70,24 +100,26 @@ export const placeOrder = async (req, res) => {
         selectedSize: item.selectedSize || null,
         selectedWeight: item.selectedWeight || null,
         selectedColor: item.selectedColor || null,
+        selectedChest: item.selectedChest || null,
+        selectedWaist: item.selectedWaist || null,
       };
     });
 
-    // ✅ Create Order
     const newOrder = new Order({
-      user: userId,
+      user: userId || null,
+      guestId: userId ? null : guestId,
       products: productsPayload,
       totalPrice: totalCost,
       shippingCost,
       shippingOption,
       paymentMethod,
       customer: {
-        name: customer?.name || user.name,
-        email: customer?.email || user.email,
-        mobile: customer?.mobile || user.mobile,
+        name: customer?.name || user?.name || "Guest Customer",
+        email: customer?.email || user?.email || "",
+        mobile: customer?.mobile || user?.mobile || "",
       },
       address,
-      transferStatus: "not_required", // ✅ default
+      transferStatus: "not_required",
       pricing: {
         subtotal: priced.subtotal,
         couponTotal: priced.couponTotal,
@@ -100,7 +132,6 @@ export const placeOrder = async (req, res) => {
 
     await newOrder.save();
 
-    // ✅ AUTO INVOICE (fire & forget)
     (async () => {
       try {
         const exists = await Invoice.findOne({ orderId: newOrder._id }).lean();
@@ -109,6 +140,7 @@ export const placeOrder = async (req, res) => {
         const items = (newOrder.products || []).map((it) => {
           const qty = it?.quantity ?? 1;
           const price = it?.price ?? 0;
+
           return {
             productId: it?.product,
             name: "",
@@ -123,7 +155,7 @@ export const placeOrder = async (req, res) => {
 
         await Invoice.create({
           orderId: newOrder._id,
-          userId: newOrder.user,
+          userId: newOrder.user || null,
           items,
           totalAmount,
           status: "unpaid",
@@ -134,12 +166,13 @@ export const placeOrder = async (req, res) => {
       }
     })();
 
-    // ✅ Banggomart transfer (only if supplier banggomart)
     try {
       const populated = await newOrder.populate("products.product");
 
       const dropshipItems = (populated.products || []).filter(
-        (p) => p?.product?.supplier === "banggomart" && p?.product?.banggoProductId
+        (p) =>
+          p?.product?.supplier === "banggomart" &&
+          p?.product?.banggoProductId
       );
 
       if (dropshipItems.length > 0) {
@@ -147,18 +180,21 @@ export const placeOrder = async (req, res) => {
         await newOrder.save();
 
         const banggoTotal = dropshipItems.reduce(
-          (sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
+          (sum, item) =>
+            sum + (Number(item.price) || 0) * (Number(item.quantity) || 1),
           0
         );
 
-        const invoiceNumber = `BM-${newOrder._id}`; // ✅ unique
+        const invoiceNumber = `BM-${newOrder._id}`;
 
         const payload = {
           invoice_number: invoiceNumber,
           customer_name: newOrder.customer?.name || "",
           customer_phone: newOrder.customer?.mobile || "",
           delivery_area:
-            newOrder.shippingOption === "inside" ? "Inside-Dhaka" : "Outside-Dhaka",
+            newOrder.shippingOption === "inside"
+              ? "Inside-Dhaka"
+              : "Outside-Dhaka",
           customer_address: newOrder.address || "",
           price: banggoTotal,
           discount: 0,
@@ -195,7 +231,6 @@ export const placeOrder = async (req, res) => {
       await newOrder.save();
     }
 
-    // ✅ Final Response
     return res.status(201).json({
       message: "Order placed successfully",
       order: newOrder,
@@ -210,25 +245,29 @@ export const placeOrder = async (req, res) => {
 
 
 // Get all orders for a user
-export const getUserOrders = async (req, res) => {
+export const getOrdersByCustomer = async (req, res) => {
   try {
-    const { userId } = req.params; // Get userId from URL params
+    const { userId, guestId } = req.query;
 
-    // Populate 'products.product' and include 'productName' and 'productImage' from the Product schema
-    const orders = await Order.find({ user: userId }).populate({
-      path: "products.product",
-      select: "productName productImage", // Selecting specific fields to populate
-    });
-
-    if (!orders.length) {
-      return res.status(404).json({ message: "No orders found for this user" });
+    if (!userId && !guestId) {
+      return res.status(400).json({ message: "UserId or GuestId required" });
     }
 
-    res.status(200).json(orders);
+    const query = userId ? { user: userId } : { guestId };
+
+    const orders = await Order.find(query)
+      .populate({
+        path: "products.product",
+        select: "productName productImage",
+      })
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json(orders || []);
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error fetching orders", error: error.message });
+    return res.status(500).json({
+      message: "Error fetching orders",
+      error: error.message,
+    });
   }
 };
 
