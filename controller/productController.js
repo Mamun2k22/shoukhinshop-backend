@@ -82,11 +82,16 @@ export const addProduct = async (req, res) => {
       errors.productName = { message: "Product name is required" };
 
     // categoryIds validate
-    if (!Array.isArray(categoryIds) || categoryIds.length === 0) {
-      errors.categories = { message: "At least one category is required" };
-    } else if (!categoryIds.every((id) => mongoose.isValidObjectId(id))) {
-      errors.categories = { message: "Invalid category id(s)" };
-    }
+   // categoryIds validate
+if (!Array.isArray(categoryIds) || categoryIds.length === 0) {
+  errors.categories = { message: "At least one category is required" };
+} else if (categoryIds.length > 2) {
+  errors.categories = {
+    message: "Only one category and one subcategory are allowed",
+  };
+} else if (!categoryIds.every((id) => mongoose.isValidObjectId(id))) {
+  errors.categories = { message: "Invalid category id(s)" };
+}
 
     if (!Array.isArray(productImage) || productImage.length === 0) {
       errors.productImage = {
@@ -175,18 +180,60 @@ export const addProduct = async (req, res) => {
     }
 
     // categories check
-    const cats = await Category.find({ _id: { $in: categoryIds } }).select(
-      "name parent",
-    );
-    if (!cats.length) {
-      return res.status(422).json({
-        message: "Validation error",
-        errors: { categories: { message: "Some categories do not exist" } },
-      });
-    }
+   const cats = await Category.find({ _id: { $in: categoryIds } }).select(
+  "name parent"
+);
 
-    const primaryCat = cats.find((c) => !c.parent) || cats[0];
-    const primaryCategoryName = primaryCat?.name || "";
+if (cats.length !== categoryIds.length) {
+  return res.status(422).json({
+    message: "Validation error",
+    errors: { categories: { message: "Some categories do not exist" } },
+  });
+}
+
+const parentCats = cats.filter((c) => !c.parent);
+const subCats = cats.filter((c) => c.parent);
+
+if (parentCats.length > 1 || subCats.length > 1) {
+  return res.status(422).json({
+    message: "Validation error",
+    errors: {
+      categories: {
+        message: "Only one parent category and one subcategory are allowed",
+      },
+    },
+  });
+}
+
+if (parentCats.length === 0) {
+  return res.status(422).json({
+    message: "Validation error",
+    errors: {
+      categories: {
+        message: "A parent category is required",
+      },
+    },
+  });
+}
+
+if (parentCats.length === 1 && subCats.length === 1) {
+  const parentId = String(parentCats[0]._id);
+  const subParentId = String(subCats[0].parent);
+
+  if (parentId !== subParentId) {
+    return res.status(422).json({
+      message: "Validation error",
+      errors: {
+        categories: {
+          message: "Selected subcategory does not belong to the selected category",
+        },
+      },
+    });
+  }
+}
+
+const primaryCat = parentCats[0];
+const primaryCategoryName = primaryCat?.name || "";
 
     const doc = new Product({
       sku: String(sku).trim(),

@@ -1,27 +1,35 @@
+
 import express from 'express';
-// import { isAdmin } from '../middleware/isAdmin.js';
-// import { protect } from '../middleware/protect.js';
 import {
   addCategory,
+  addSubCategory,
   getAllCategories,
+  getAllSubCategories,
   getProductsByCategory,
+  getProductsBySubCategory,
   deleteCategory,
-  updateCategory, 
+  updateCategory,
 } from '../controller/categoryController.js';
 
 const router = express.Router();
 
-// Admin route: Add a new category
-router.post('/', addCategory); // Admin only
+// add
+router.post('/', addCategory); // main category
+router.post('/subcategory', addSubCategory); // subcategory
 
-// User route: Get all categories
-router.get('/', getAllCategories); // Public access
+// list
+router.get('/', getAllCategories); // only parent categories with nested subcategories
+router.get('/subcategory/all', getAllSubCategories); // optional
+
+// update/delete
 router.put("/:id", updateCategory);
-router.delete("/:id", deleteCategory); 
+router.delete("/:id", deleteCategory);
 
-// User route: Get products by category name
-router.get('/:name', getProductsByCategory); // Public access
-
+// product routes
+router.get('/:name/:subSlug', getProductsBySubCategory);
+router.get('/:name', getProductsByCategory);
 
 export default router;
+
+
 
